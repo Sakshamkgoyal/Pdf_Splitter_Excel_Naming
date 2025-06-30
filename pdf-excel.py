@@ -5,7 +5,7 @@ from io import BytesIO
 import zipfile
 import re
 from collections import defaultdict
-import hashlib
+import uuid
 
 st.set_page_config(page_title="PDF Splitter + Excel-Based Naming", layout="wide")
 st.title("📄 PDF Splitter + Excel-Based Naming")
@@ -108,10 +108,6 @@ if st.button("Generate Split PDFs"):
 
         st.success("✅ PDFs generated successfully!")
 
-# --- Hashing utility ---
-def hash_string(s):
-    return hashlib.md5(s.encode()).hexdigest()
-
 # --- Download Buttons ---
 if output_files:
     st.subheader("📥 Download PDFs")
@@ -122,9 +118,9 @@ if output_files:
         default=[fname for fname, _ in output_files]
     )
 
-    for idx, (fname, data) in enumerate(output_files):
+    for fname, data in output_files:
         if fname in selected_names:
-            unique_key = f"btn_download_{idx}_{hash_string(fname)}"
+            unique_key = f"btn_{uuid.uuid4()}"
             st.download_button(
                 label=f"Download {fname}",
                 data=data.getvalue(),
@@ -147,5 +143,5 @@ if output_files:
         data=zip_buffer,
         file_name="split_pdfs.zip",
         mime="application/zip",
-        key="zip_download_button"
+        key=f"zip_{uuid.uuid4()}"
     )
