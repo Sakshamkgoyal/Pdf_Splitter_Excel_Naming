@@ -11,7 +11,7 @@ import re
 st.set_page_config(page_title="PDF Splitter + Excel Naming", layout="wide")
 st.title("📄 PDF Splitter + 📊 Excel-Based Naming")
 
-# Fix for Streamlit widget key duplication
+# Unique session-based key seed
 if 'pdf_key' not in st.session_state:
     st.session_state['pdf_key'] = str(uuid.uuid4())
 
@@ -63,7 +63,10 @@ if pdf_file and excel_file and selected_columns and page_ranges:
     preview_list = []
     for i in range(min(len(page_ranges), len(df))):
         row = df.iloc[i]
-        name_parts = [str(row[col]) for col in selected_columns]
+        try:
+            name_parts = [str(row[col]) if pd.notna(row[col]) else "NA" for col in selected_columns]
+        except Exception as e:
+            name_parts = [f"row{i+1}"]
         filename = delimiter.join(name_parts).strip().replace(" ", "_")
         filename = re.sub(r"[^\w\-_.]", "_", filename) + ".pdf"
         preview_list.append(filename)
@@ -88,7 +91,11 @@ if st.button("Generate Split PDFs"):
                 writer.add_page(reader.pages[j])
 
             row = df.iloc[i]
-            name_parts = [str(row[col]) for col in selected_columns]
+            try:
+                name_parts = [str(row[col]) if pd.notna(row[col]) else "NA" for col in selected_columns]
+            except Exception as e:
+                name_parts = [f"row{i+1}"]
+
             filename = delimiter.join(name_parts).strip().replace(" ", "_")
             filename = re.sub(r"[^\w\-_.]", "_", filename) + ".pdf"
 
@@ -116,13 +123,13 @@ if output_files:
 
         with st.container():
             data.seek(0)
-            uid = f"{idx}_{fname}_{st.session_state['pdf_key']}"
+            unique_hash = hashlib.md5(f"{idx}_{fname}_{st.session_state['pdf_key']}".encode()).hexdigest()
             st.download_button(
                 label=f"Download {fname}",
                 data=data,
                 file_name=fname,
                 mime="application/pdf",
-                key=f"download_button_{uid}"
+                key=f"download_button_{unique_hash}"
             )
 
     # ZIP download of selected
