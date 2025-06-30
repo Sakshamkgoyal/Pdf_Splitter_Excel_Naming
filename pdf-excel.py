@@ -98,10 +98,11 @@ if st.button("Generate and Download PDFs"):
         st.subheader("📥 Download Individual Files")
 
         for idx, (fname, data) in enumerate(output_files):
+            safe_key = f"download_{idx}_{fname}".replace(" ", "_").replace(".", "_")
             st.download_button(
                 label=f"Download {fname}",
                 data=data,
                 file_name=fname,
                 mime="application/pdf",
-                key=f"download_{idx}"  # 🔑 UNIQUE key to avoid duplicate ID error
+                key=safe_key  # ✅ Guaranteed unique key
             )
