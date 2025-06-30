@@ -5,6 +5,7 @@ from io import BytesIO
 import zipfile
 import re
 from collections import defaultdict
+import hashlib
 
 st.set_page_config(page_title="PDF Splitter + Excel-Based Naming", layout="wide")
 st.title("📄 PDF Splitter + Excel-Based Naming")
@@ -60,8 +61,7 @@ def generate_filenames_from_excel(df, selected_columns, delimiter, count):
         row = df.iloc[i]
         parts = [str(row[col]) if pd.notna(row[col]) else "NA" for col in selected_columns]
         base = delimiter.join(parts).strip().replace(" ", "_")
-        # Sanitize: remove or replace illegal characters for filenames
-        base = re.sub(r"[\\/<>:\"|?*]", "_", base)
+        base = re.sub(r"[\\/<>:\"|?*]", "_", base)  # sanitize
         raw_names.append(base)
 
     counts = defaultdict(int)
@@ -104,6 +104,10 @@ if st.button("Generate Split PDFs"):
 
         st.success("✅ PDFs generated successfully!")
 
+# --- Hashing utility ---
+def hash_string(s):
+    return hashlib.md5(s.encode()).hexdigest()
+
 # --- Download Buttons ---
 if output_files:
     st.subheader("📥 Download PDFs")
@@ -116,12 +120,13 @@ if output_files:
 
     for idx, (fname, data) in enumerate(output_files):
         if fname in selected_names:
+            unique_key = f"btn_download_{idx}_{hash_string(fname)}"
             st.download_button(
                 label=f"Download {fname}",
                 data=data.getvalue(),
                 file_name=fname,
                 mime="application/pdf",
-                key=f"btn_download_{idx}"
+                key=unique_key
             )
 
     # --- ZIP all selected ---
