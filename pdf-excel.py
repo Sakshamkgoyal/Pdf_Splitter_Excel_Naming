@@ -5,14 +5,11 @@ from io import BytesIO
 import zipfile
 import uuid
 import re
+from collections import defaultdict
 
 # App config
 st.set_page_config(page_title="PDF Splitter + Excel Naming", layout="wide")
 st.title("📄 PDF Splitter + 📊 Excel-Based Naming")
-
-# Session key for uniqueness
-if 'pdf_key' not in st.session_state:
-    st.session_state['pdf_key'] = str(uuid.uuid4())
 
 # Upload files
 pdf_file = st.file_uploader("Upload a PDF file", type="pdf")
@@ -56,10 +53,24 @@ if pdf_file:
             except Exception as e:
                 st.error(f"Invalid range format: {e}")
 
+# Function to resolve duplicate names
+def resolve_duplicate_filenames(names):
+    name_count = defaultdict(int)
+    final_names = []
+    for name in names:
+        base, ext = name.rsplit(".", 1)
+        count = name_count[base]
+        if count == 0:
+            final_names.append(f"{base}.{ext}")
+        else:
+            final_names.append(f"{base}_{count}.{ext}")
+        name_count[base] += 1
+    return final_names
+
 # Filename preview
 if pdf_file and excel_file and selected_columns and page_ranges:
     st.subheader("🔍 Preview Filenames")
-    preview_list = []
+    raw_names = []
     for i in range(min(len(page_ranges), len(df))):
         row = df.iloc[i]
         try:
@@ -68,9 +79,11 @@ if pdf_file and excel_file and selected_columns and page_ranges:
             name_parts = [f"row_{i+1}"]
         filename = delimiter.join(name_parts).strip().replace(" ", "_")
         filename = re.sub(r"[^\w\-_.]", "_", filename) + ".pdf"
-        preview_list.append(filename)
-    filename_preview = preview_list
-    st.table(pd.DataFrame({"Split #": range(1, len(preview_list)+1), "Filename": preview_list}))
+        raw_names.append(filename)
+
+    resolved_names = resolve_duplicate_filenames(raw_names)
+    filename_preview = resolved_names
+    st.table(pd.DataFrame({"Split #": range(1, len(resolved_names)+1), "Filename": resolved_names}))
 
 # Generate PDFs
 if st.button("Generate Split PDFs"):
@@ -80,14 +93,8 @@ if st.button("Generate Split PDFs"):
         st.warning("More PDF splits than Excel rows. Extra PDFs will be skipped.")
     else:
         reader = PdfReader(pdf_file)
-        for i, (start, end) in enumerate(page_ranges):
-            if i >= len(df):
-                break
-
-            writer = PdfWriter()
-            for j in range(start, end + 1):
-                writer.add_page(reader.pages[j])
-
+        raw_names = []
+        for i in range(min(len(page_ranges), len(df))):
             row = df.iloc[i]
             try:
                 name_parts = [str(row[col]) if pd.notna(row[col]) else "NA" for col in selected_columns]
@@ -95,11 +102,19 @@ if st.button("Generate Split PDFs"):
                 name_parts = [f"row_{i+1}"]
             filename = delimiter.join(name_parts).strip().replace(" ", "_")
             filename = re.sub(r"[^\w\-_.]", "_", filename) + ".pdf"
+            raw_names.append(filename)
+
+        resolved_names = resolve_duplicate_filenames(raw_names)
+
+        for i, (start, end) in enumerate(page_ranges[:len(resolved_names)]):
+            writer = PdfWriter()
+            for j in range(start, end + 1):
+                writer.add_page(reader.pages[j])
 
             pdf_bytes = BytesIO()
             writer.write(pdf_bytes)
             pdf_bytes.seek(0)
-            output_files.append((filename, pdf_bytes))
+            output_files.append((resolved_names[i], pdf_bytes))
 
         st.success("✅ PDFs generated successfully!")
 
@@ -113,8 +128,7 @@ if output_files:
         default=[fname for fname, _ in output_files]
     )
 
-    # Individual download buttons
-    for idx, (fname, data) in enumerate(output_files):
+    for fname, data in output_files:
         if fname not in selected_filenames:
             continue
         with st.container():
@@ -124,7 +138,7 @@ if output_files:
                 data=data,
                 file_name=fname,
                 mime="application/pdf",
-                key=f"btn_{uuid.uuid4()}"
+                key=f"{fname}_{uuid.uuid4()}"
             )
 
     # ZIP all selected
