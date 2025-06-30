@@ -3,11 +3,10 @@ import pandas as pd
 from PyPDF2 import PdfReader, PdfWriter
 from io import BytesIO
 import zipfile
-import uuid
 import re
 from collections import defaultdict
 
-st.set_page_config(page_title="PDF Splitter + Excel Naming", layout="wide")
+st.set_page_config(page_title="PDF Splitter + Excel-Based Naming", layout="wide")
 st.title("📄 PDF Splitter + Excel-Based Naming")
 
 pdf_file = st.file_uploader("Upload a PDF file", type="pdf")
@@ -15,6 +14,7 @@ excel_file = st.file_uploader("Upload an Excel file", type=["xls", "xlsx"])
 
 output_files = []
 final_filenames = []
+page_ranges = []
 
 # --- Read Excel ---
 if excel_file:
@@ -31,7 +31,6 @@ if excel_file:
 
 # --- Split Setup ---
 split_mode = st.radio("Choose how to split the PDF", ["Fixed pages per file", "Custom page ranges"])
-page_ranges = []
 
 if pdf_file:
     reader = PdfReader(pdf_file)
@@ -47,18 +46,21 @@ if pdf_file:
             try:
                 for part in input_range.split(","):
                     start, end = map(int, part.strip().split("-"))
-                    page_ranges.append((start - 1, end - 1))
+                    if start <= end and 1 <= start <= total_pages and 1 <= end <= total_pages:
+                        page_ranges.append((start - 1, end - 1))
+                    else:
+                        st.warning(f"⚠️ Skipped invalid range: {start}-{end}")
             except Exception as e:
                 st.error(f"Invalid input format: {e}")
 
-# --- Generate safe, unique filenames from Excel ---
+# --- Filename Generation ---
 def generate_filenames_from_excel(df, selected_columns, delimiter, count):
     raw_names = []
     for i in range(min(count, len(df))):
         row = df.iloc[i]
         parts = [str(row[col]) if pd.notna(row[col]) else "NA" for col in selected_columns]
         base = delimiter.join(parts).strip().replace(" ", "_")
-        base = re.sub(r"[^\w\-_.]", "_", base)  # sanitize filename
+        base = re.sub(r"[^\w\-_.]", "_", base)  # sanitize
         raw_names.append(base)
 
     counts = defaultdict(int)
@@ -82,7 +84,7 @@ if pdf_file and excel_file and selected_columns and page_ranges:
 
 # --- Generate PDFs ---
 if st.button("Generate Split PDFs"):
-    if not (pdf_file and excel_file and selected_columns):
+    if not (pdf_file and excel_file and selected_columns and page_ranges):
         st.error("Please upload both files and select naming columns.")
     else:
         reader = PdfReader(pdf_file)
@@ -111,14 +113,14 @@ if output_files:
         default=[fname for fname, _ in output_files]
     )
 
-    for fname, data in output_files:
+    for idx, (fname, data) in enumerate(output_files):
         if fname in selected_names:
             st.download_button(
                 label=f"Download {fname}",
                 data=data.getvalue(),
                 file_name=fname,
                 mime="application/pdf",
-                key=f"btn_{fname}_{uuid.uuid4()}"
+                key=f"btn_download_{idx}"
             )
 
     # --- ZIP all selected ---
@@ -135,5 +137,5 @@ if output_files:
         data=zip_buffer,
         file_name="split_pdfs.zip",
         mime="application/zip",
-        key=f"zip_{uuid.uuid4()}"
+        key="zip_download_button"
     )
