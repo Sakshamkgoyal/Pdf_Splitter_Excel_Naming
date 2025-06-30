@@ -47,7 +47,7 @@ if pdf_file:
             try:
                 for part in input_range.split(","):
                     start, end = map(int, part.strip().split("-"))
-                    if start <= end and 1 <= start <= total_pages and 1 <= end <= total_pages:
+                    if 1 <= start <= end <= total_pages:
                         page_ranges.append((start - 1, end - 1))
                     else:
                         st.warning(f"⚠️ Skipped invalid range: {start}-{end}")
@@ -61,7 +61,7 @@ def generate_filenames_from_excel(df, selected_columns, delimiter, count):
         row = df.iloc[i]
         parts = [str(row[col]) if pd.notna(row[col]) else "NA" for col in selected_columns]
         base = delimiter.join(parts).strip().replace(" ", "_")
-        base = re.sub(r"[\\/<>:\"|?*]", "_", base)  # sanitize
+        base = re.sub(r"[\\/<>:\"|?*]", "_", base)
         raw_names.append(base)
 
     counts = defaultdict(int)
@@ -77,9 +77,12 @@ def generate_filenames_from_excel(df, selected_columns, delimiter, count):
 # --- Preview Final Names ---
 if pdf_file and excel_file and selected_columns and page_ranges:
     st.subheader("🔍 Filename Preview")
-    final_filenames = generate_filenames_from_excel(df, selected_columns, delimiter, len(page_ranges))
+
+    usable_count = min(len(page_ranges), len(df))
+    final_filenames = generate_filenames_from_excel(df, selected_columns, delimiter, usable_count)
+
     st.table(pd.DataFrame({
-        "Split #": list(range(1, len(final_filenames)+1)),
+        "Split #": list(range(1, usable_count + 1)),
         "Filename": final_filenames
     }))
 
@@ -89,10 +92,11 @@ if st.button("Generate Split PDFs"):
         st.error("Please upload both files and select naming columns.")
     else:
         reader = PdfReader(pdf_file)
-        final_filenames = generate_filenames_from_excel(df, selected_columns, delimiter, len(page_ranges))
+        usable_count = min(len(page_ranges), len(df))
+        final_filenames = generate_filenames_from_excel(df, selected_columns, delimiter, usable_count)
         output_files.clear()
 
-        for i, (start, end) in enumerate(page_ranges[:len(final_filenames)]):
+        for i, (start, end) in enumerate(page_ranges[:usable_count]):
             writer = PdfWriter()
             for j in range(start, end + 1):
                 writer.add_page(reader.pages[j])
