@@ -53,14 +53,15 @@ if pdf_file:
             except Exception as e:
                 st.error(f"Invalid input format: {e}")
 
-# --- Filename Generation ---
+# --- Generate safe filenames ---
 def generate_filenames_from_excel(df, selected_columns, delimiter, count):
     raw_names = []
     for i in range(min(count, len(df))):
         row = df.iloc[i]
         parts = [str(row[col]) if pd.notna(row[col]) else "NA" for col in selected_columns]
         base = delimiter.join(parts).strip().replace(" ", "_")
-        base = re.sub(r"[^\w\-_.]", "_", base)  # sanitize
+        # Sanitize: remove or replace illegal characters for filenames
+        base = re.sub(r"[\\/<>:\"|?*]", "_", base)
         raw_names.append(base)
 
     counts = defaultdict(int)
