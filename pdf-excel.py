@@ -7,11 +7,11 @@ import zipfile
 st.set_page_config(page_title="PDF Splitter + Excel Naming", layout="wide")
 st.title("📄 PDF Splitter + 📊 Excel-Based Naming")
 
-# File upload
+# Upload files
 pdf_file = st.file_uploader("Upload a PDF file", type="pdf")
 excel_file = st.file_uploader("Upload an Excel file", type=["xls", "xlsx"])
 
-# Display Excel and choose columns
+# Show Excel and select columns
 if excel_file:
     df = pd.read_excel(excel_file)
     st.subheader("Excel Preview")
@@ -48,7 +48,7 @@ if pdf_file:
             except Exception as e:
                 st.error(f"Invalid range format: {e}")
 
-# Button to generate PDFs
+# Generate and download PDFs
 if st.button("Generate and Download PDFs"):
     if not pdf_file or not excel_file:
         st.error("Please upload both a PDF and an Excel file.")
@@ -56,7 +56,6 @@ if st.button("Generate and Download PDFs"):
         st.error("Please select column(s) from Excel for naming the files.")
     elif len(page_ranges) > len(df):
         st.warning("You have more split segments than Excel rows. Extra PDFs will be skipped.")
-
     else:
         output_files = []
         reader = PdfReader(pdf_file)
@@ -81,15 +80,28 @@ if st.button("Generate and Download PDFs"):
 
         st.success("PDFs generated successfully!")
 
-        # Individual download buttons
-        for fname, data in output_files:
-            st.download_button(label=f"📥 Download {fname}", data=data, file_name=fname, mime="application/pdf")
-
-        # Create ZIP for all
+        # Download all as ZIP
         zip_buffer = BytesIO()
         with zipfile.ZipFile(zip_buffer, "w") as zipf:
             for fname, data in output_files:
                 zipf.writestr(fname, data.read())
-
         zip_buffer.seek(0)
-        st.download_button("📦 Download All as ZIP", data=zip_buffer, file_name="split_pdfs.zip", mime="application/zip")
+
+        st.download_button(
+            label="📦 Download All as ZIP",
+            data=zip_buffer,
+            file_name="split_pdfs.zip",
+            mime="application/zip"
+        )
+
+        st.markdown("---")
+        st.subheader("📥 Download Individual Files")
+
+        for idx, (fname, data) in enumerate(output_files):
+            st.download_button(
+                label=f"Download {fname}",
+                data=data,
+                file_name=fname,
+                mime="application/pdf",
+                key=f"download_{idx}"  # 🔑 UNIQUE key to avoid duplicate ID error
+            )
