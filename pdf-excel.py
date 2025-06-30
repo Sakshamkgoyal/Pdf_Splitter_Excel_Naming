@@ -118,16 +118,16 @@ if output_files:
         default=[fname for fname, _ in output_files]
     )
 
-    for fname, data in output_files:
+    for index, (fname, data) in enumerate(output_files):
         if fname in selected_names:
-            unique_key = f"btn_{uuid.uuid4()}"
             st.download_button(
                 label=f"Download {fname}",
                 data=data.getvalue(),
                 file_name=fname,
                 mime="application/pdf",
-                key=unique_key
+                key=f"download_button_{index}_{str(uuid.uuid4())}"
             )
+
 
     # --- ZIP all selected ---
     zip_buffer = BytesIO()
@@ -143,5 +143,6 @@ if output_files:
         data=zip_buffer,
         file_name="split_pdfs.zip",
         mime="application/zip",
-        key=f"zip_{uuid.uuid4()}"
+        key=f"zip_download_button_{str(uuid.uuid4())}"
     )
+
