@@ -4,10 +4,16 @@ from PyPDF2 import PdfReader, PdfWriter
 from io import BytesIO
 import zipfile
 import hashlib
+import uuid
 import re
 
+# App config
 st.set_page_config(page_title="PDF Splitter + Excel Naming", layout="wide")
 st.title("📄 PDF Splitter + 📊 Excel-Based Naming")
+
+# Fix for Streamlit widget key duplication
+if 'pdf_key' not in st.session_state:
+    st.session_state['pdf_key'] = str(uuid.uuid4())
 
 # Upload files
 pdf_file = st.file_uploader("Upload a PDF file", type="pdf")
@@ -16,7 +22,7 @@ excel_file = st.file_uploader("Upload an Excel file", type=["xls", "xlsx"])
 output_files = []
 filename_preview = []
 
-# Excel preview and column selection
+# Excel logic
 if excel_file:
     df = pd.read_excel(excel_file)
     st.subheader("Excel Preview")
@@ -29,7 +35,7 @@ if excel_file:
     if len(selected_columns) > 1:
         delimiter = st.text_input("Delimiter for joining column values", "-")
 
-# PDF split configuration
+# PDF split config
 split_mode = st.radio("Choose PDF Split Mode", ["Fixed pages per file", "Custom page ranges"])
 page_ranges = []
 
@@ -42,7 +48,7 @@ if pdf_file:
         pages_per_file = st.number_input("Pages per file", min_value=1, max_value=total_pages, value=1)
         page_ranges = [(i, min(i + pages_per_file - 1, total_pages - 1)) for i in range(0, total_pages, pages_per_file)]
     else:
-        ranges_input = st.text_area("Enter page ranges (e.g. 1-5,6-10,11-15)")
+        ranges_input = st.text_area("Enter page ranges (e.g. 1-5,6-8,9-12)")
         if ranges_input:
             try:
                 for part in ranges_input.split(","):
@@ -51,7 +57,7 @@ if pdf_file:
             except Exception as e:
                 st.error(f"Invalid range format: {e}")
 
-# 🔍 Preview filenames
+# Preview filenames
 if pdf_file and excel_file and selected_columns and page_ranges:
     st.subheader("🔍 Preview Filenames")
     preview_list = []
@@ -65,7 +71,7 @@ if pdf_file and excel_file and selected_columns and page_ranges:
     filename_preview = preview_list
     st.table(pd.DataFrame({"Split #": range(1, len(preview_list)+1), "Filename": preview_list}))
 
-# ✅ Generate PDFs
+# Generate PDFs
 if st.button("Generate Split PDFs"):
     if not (pdf_file and excel_file and selected_columns):
         st.error("Please upload files and select columns.")
@@ -73,7 +79,6 @@ if st.button("Generate Split PDFs"):
         st.warning("More PDF splits than Excel rows. Extra PDFs will be skipped.")
     else:
         reader = PdfReader(pdf_file)
-
         for i, (start, end) in enumerate(page_ranges):
             if i >= len(df):
                 break
@@ -94,7 +99,7 @@ if st.button("Generate Split PDFs"):
 
         st.success("PDFs generated successfully!")
 
-# If files are ready, offer download options
+# Download Section
 if output_files:
     st.subheader("📥 Download Options")
 
@@ -104,20 +109,23 @@ if output_files:
         default=[fname for fname, _ in output_files]
     )
 
+    # Individual file downloads
     for idx, (fname, data) in enumerate(output_files):
         if fname not in selected_filenames:
             continue
-        data.seek(0)
-        uid = hashlib.md5(f"{idx}_{fname}".encode()).hexdigest()
-        st.download_button(
-            label=f"Download {fname}",
-            data=data,
-            file_name=fname,
-            mime="application/pdf",
-            key=f"download_button_{uid}"
-        )
 
-    # Download ZIP of selected files
+        with st.container():
+            data.seek(0)
+            uid = f"{idx}_{fname}_{st.session_state['pdf_key']}"
+            st.download_button(
+                label=f"Download {fname}",
+                data=data,
+                file_name=fname,
+                mime="application/pdf",
+                key=f"download_button_{uid}"
+            )
+
+    # ZIP download of selected
     zip_buffer = BytesIO()
     with zipfile.ZipFile(zip_buffer, "w") as zipf:
         for fname, data in output_files:
@@ -131,5 +139,5 @@ if output_files:
         data=zip_buffer,
         file_name="selected_pdfs.zip",
         mime="application/zip",
-        key="download_zip"
+        key=f"zip_download_{st.session_state['pdf_key']}"
     )
