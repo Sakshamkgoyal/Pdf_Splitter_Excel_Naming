@@ -3,35 +3,36 @@ import pandas as pd
 from PyPDF2 import PdfReader, PdfWriter
 from io import BytesIO
 import zipfile
+import uuid
 import re
 from collections import defaultdict
-import uuid
 
 st.set_page_config(page_title="PDF Splitter + Excel-Based Naming", layout="wide")
 st.title("📄 PDF Splitter + Excel-Based Naming")
 
-pdf_file = st.file_uploader("Upload a PDF file", type="pdf")
-excel_file = st.file_uploader("Upload an Excel file", type=["xls", "xlsx"])
+# Initialize session state
+if "output_files" not in st.session_state:
+    st.session_state.output_files = []
 
-output_files = []
-final_filenames = []
-page_ranges = []
+# Upload files
+pdf_file = st.file_uploader("Upload a PDF file", type="pdf", key="pdf_upload")
+excel_file = st.file_uploader("Upload an Excel file", type=["xls", "xlsx"], key="excel_upload")
 
-# --- Read Excel ---
 if excel_file:
     df = pd.read_excel(excel_file)
     st.subheader("📊 Excel Preview")
     st.dataframe(df.head())
 
     columns = df.columns.tolist()
-    selected_columns = st.multiselect("Select Excel column(s) to name PDF files", columns)
+    selected_columns = st.multiselect("Select Excel column(s) to name PDF files", columns, key="column_select")
 
     delimiter = "-"
     if len(selected_columns) > 1:
-        delimiter = st.text_input("Delimiter between values", "-")
+        delimiter = st.text_input("Delimiter between values", "-", key="delimiter_input")
 
-# --- Split Setup ---
+# PDF split settings
 split_mode = st.radio("Choose how to split the PDF", ["Fixed pages per file", "Custom page ranges"])
+page_ranges = []
 
 if pdf_file:
     reader = PdfReader(pdf_file)
@@ -47,25 +48,22 @@ if pdf_file:
             try:
                 for part in input_range.split(","):
                     start, end = map(int, part.strip().split("-"))
-                    if 1 <= start <= end <= total_pages:
-                        page_ranges.append((start - 1, end - 1))
-                    else:
-                        st.warning(f"⚠️ Skipped invalid range: {start}-{end}")
+                    page_ranges.append((start - 1, end - 1))
             except Exception as e:
                 st.error(f"Invalid input format: {e}")
 
-# --- Generate safe filenames ---
-def generate_filenames_from_excel(df, selected_columns, delimiter, count):
+# Filename generation
+def generate_filenames(df, columns, delimiter, count):
     raw_names = []
     for i in range(min(count, len(df))):
         row = df.iloc[i]
-        parts = [str(row[col]) if pd.notna(row[col]) else "NA" for col in selected_columns]
-        base = delimiter.join(parts).strip().replace(" ", "_")
-        base = re.sub(r"[\\/<>:\"|?*]", "_", base)
+        parts = [str(row[col]) if pd.notna(row[col]) else "NA" for col in columns]
+        base = delimiter.join(parts).replace(" ", "_")
+        base = re.sub(r"[^\w\-_.]", "_", base)
         raw_names.append(base)
 
-    counts = defaultdict(int)
     final = []
+    counts = defaultdict(int)
     for name in raw_names:
         if counts[name] == 0:
             final.append(f"{name}.pdf")
@@ -74,64 +72,62 @@ def generate_filenames_from_excel(df, selected_columns, delimiter, count):
         counts[name] += 1
     return final
 
-# --- Preview Final Names ---
+# Preview filenames
 if pdf_file and excel_file and selected_columns and page_ranges:
-    st.subheader("🔍 Filename Preview")
-
     usable_count = min(len(page_ranges), len(df))
-    final_filenames = generate_filenames_from_excel(df, selected_columns, delimiter, usable_count)
+    final_filenames = generate_filenames(df, selected_columns, delimiter, usable_count)
 
+    st.subheader("🔍 Filename Preview")
     st.dataframe(pd.DataFrame({
         "Split #": list(range(1, usable_count + 1)),
         "Filename": final_filenames
     }))
 
-# --- Generate PDFs ---
+# Generate PDFs
 if st.button("Generate Split PDFs"):
     if not (pdf_file and excel_file and selected_columns and page_ranges):
         st.error("Please upload both files and select naming columns.")
     else:
+        st.session_state.output_files = []  # Clear previous outputs
+
         reader = PdfReader(pdf_file)
         usable_count = min(len(page_ranges), len(df))
-        final_filenames = generate_filenames_from_excel(df, selected_columns, delimiter, usable_count)
-        output_files.clear()
+        final_filenames = generate_filenames(df, selected_columns, delimiter, usable_count)
 
         for i, (start, end) in enumerate(page_ranges[:usable_count]):
             writer = PdfWriter()
             for j in range(start, end + 1):
                 writer.add_page(reader.pages[j])
 
-            pdf_bytes = BytesIO()
-            writer.write(pdf_bytes)
-            pdf_bytes.seek(0)
-            output_files.append((final_filenames[i], pdf_bytes))
+            buffer = BytesIO()
+            writer.write(buffer)
+            buffer.seek(0)
+            st.session_state.output_files.append((final_filenames[i], buffer))
 
         st.success("✅ PDFs generated successfully!")
 
-# --- Download Buttons ---
-if output_files:
+# Download section
+if st.session_state.output_files:
     st.subheader("📥 Download PDFs")
-
     selected_names = st.multiselect(
         "Select PDFs to download:",
-        [fname for fname, _ in output_files],
-        default=[fname for fname, _ in output_files]
+        [fname for fname, _ in st.session_state.output_files],
+        default=[fname for fname, _ in st.session_state.output_files]
     )
 
-    for fname, data in output_files:
+    for i, (fname, data) in enumerate(st.session_state.output_files):
         if fname in selected_names:
             st.download_button(
                 label=f"Download {fname}",
                 data=data.getvalue(),
                 file_name=fname,
                 mime="application/pdf",
-                key=f"btn_{uuid.uuid4()}"
+                key=f"dl_button_{i}_{uuid.uuid4()}"
             )
 
-    # --- ZIP all selected ---
     zip_buffer = BytesIO()
     with zipfile.ZipFile(zip_buffer, "w") as zipf:
-        for fname, data in output_files:
+        for fname, data in st.session_state.output_files:
             if fname in selected_names:
                 data.seek(0)
                 zipf.writestr(fname, data.read())
@@ -142,5 +138,5 @@ if output_files:
         data=zip_buffer,
         file_name="split_pdfs.zip",
         mime="application/zip",
-        key=f"zip_btn_{uuid.uuid4()}"
+        key=f"zip_download_{uuid.uuid4()}"
     )
