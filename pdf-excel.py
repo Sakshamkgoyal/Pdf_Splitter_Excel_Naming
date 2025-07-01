@@ -81,7 +81,7 @@ if pdf_file and excel_file and selected_columns and page_ranges:
     usable_count = min(len(page_ranges), len(df))
     final_filenames = generate_filenames_from_excel(df, selected_columns, delimiter, usable_count)
 
-    st.table(pd.DataFrame({
+    st.dataframe(pd.DataFrame({
         "Split #": list(range(1, usable_count + 1)),
         "Filename": final_filenames
     }))
@@ -118,16 +118,15 @@ if output_files:
         default=[fname for fname, _ in output_files]
     )
 
-    for index, (fname, data) in enumerate(output_files):
+    for fname, data in output_files:
         if fname in selected_names:
             st.download_button(
                 label=f"Download {fname}",
                 data=data.getvalue(),
                 file_name=fname,
                 mime="application/pdf",
-                key=f"download_button_{index}_{str(uuid.uuid4())}"
+                key=f"btn_{uuid.uuid4()}"
             )
-
 
     # --- ZIP all selected ---
     zip_buffer = BytesIO()
@@ -143,6 +142,5 @@ if output_files:
         data=zip_buffer,
         file_name="split_pdfs.zip",
         mime="application/zip",
-        key=f"zip_download_button_{str(uuid.uuid4())}"
+        key=f"zip_btn_{uuid.uuid4()}"
     )
-
